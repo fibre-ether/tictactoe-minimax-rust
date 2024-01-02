@@ -1,0 +1,14 @@
+{
+  "name": "tictactoe",
+  "version": "0.1.0",
+  "files": [
+    "tictactoe_bg.wasm",
+    "tictactoe.js",
+    "tictactoe.d.ts"
+  ],
+  "module": "tictactoe.js",
+  "types": "tictactoe.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
