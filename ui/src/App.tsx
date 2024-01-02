@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Agent, BoardState, GameEndState } from "../public/pkg/tictactoe";
 import UseWasm from "./UseWasm";
 import { Circle, X } from "lucide-react";
+import "./App.css";
 
 function App() {
   // const [nextMove, setNextMove] = useState<number>(0)
@@ -110,6 +111,20 @@ function App() {
         })}
       </div>
       <p className="text-xl h-12">{gameOver}</p>
+      <div className="attributions underline text-white">
+        <a
+          href="https://github.com/fibre-ether"
+          target="_blank"
+          rel={"noreferrer noopener"}>
+          @fibre-ether
+        </a>
+        <a
+          href="https://github.com/fibre-ether/wasm-tictactoe"
+          target="_blank"
+          rel={"noreferrer noopener"}>
+          Code
+        </a>
+      </div>
     </div>
   );
 }
