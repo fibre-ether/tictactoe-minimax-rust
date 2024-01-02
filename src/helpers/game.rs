@@ -1,20 +1,90 @@
+use wasm_bindgen::{prelude::wasm_bindgen, JsValue};
+
 use super::{
     constants::MAX_DEPTH,
-    functions::{are_equal, player_next_move, print_player_message},
+    functions::{are_equal, player_next_move},
     structs::{Agent, BoardState, GameEndState, GameOverLine, MiniMaxMode, MiniMaxReturnValue},
 };
 use crate::helpers::functions::log;
-use std::{fmt, time::Instant};
-#[derive(Clone)]
+use std::fmt;
+
+#[wasm_bindgen]
 pub struct Game {
-    pub board: Vec<BoardState>,
-    pub player_move: BoardState,
-    pub bot_move: BoardState,
-    pub next_to_move: Option<Agent>,
+    board: Vec<BoardState>,
+    player_move: BoardState,
+    bot_move: BoardState,
+    pub next_to_move: Agent,
+    pub winner: Option<Agent>,
 }
 
+#[wasm_bindgen]
 impl Game {
-    pub fn minimax(
+    #[wasm_bindgen(constructor)]
+    pub fn new(next_to_move: Agent) -> Game {
+        let mut board: Vec<BoardState> = Vec::new();
+        for _ in 0..9 {
+            board.push(BoardState::Empty);
+        }
+
+        Game {
+            board,
+            player_move: BoardState::X,
+            bot_move: BoardState::O,
+            next_to_move,
+            winner: None,
+        }
+    }
+
+    #[wasm_bindgen(method)]
+    pub fn board(&self) -> Vec<BoardState> {
+        self.board.to_vec()
+    }
+
+    #[wasm_bindgen(method)]
+    pub fn iter_loop(&mut self, input_move: usize) -> Result<(), JsValue> {
+        if self.is_game_over() == GameEndState::Ongoing {
+            let next_move = self.retrieve_next_move(input_move)?;
+            self.play_move(next_move);
+
+            if let GameEndState::Ongoing = self.is_game_over() {
+                self.flip_next_to_move()
+            }
+        }
+        Ok(())
+    }
+
+    #[wasm_bindgen(method)]
+    pub fn is_game_over(&mut self) -> GameEndState {
+        let game_over_lines = vec![
+            GameOverLine(0, 1, 2),
+            GameOverLine(3, 4, 5),
+            GameOverLine(6, 7, 8),
+            GameOverLine(0, 3, 6),
+            GameOverLine(1, 4, 7),
+            GameOverLine(2, 5, 8),
+            GameOverLine(0, 4, 8),
+            GameOverLine(2, 4, 6),
+        ];
+        let board = &self.board;
+
+        for gol in game_over_lines {
+            if are_equal(&board[gol.0], &board[gol.1], &board[gol.2]) {
+                let winner = self.next_to_move;
+                self.winner = Some(winner);
+                return GameEndState::Win;
+            }
+        }
+        if self.retrieve_valid_next_moves().is_empty() {
+            return GameEndState::Tie;
+        }
+        GameEndState::Ongoing
+    }
+
+    pub fn display(&self) {
+        println!("{}\n", self);
+    }
+
+    fn minimax(
         &mut self,
         next_valid_moves: Vec<usize>,
         mode: MiniMaxMode,
@@ -22,7 +92,7 @@ impl Game {
     ) -> MiniMaxReturnValue {
         log(format!("{}", self), depth);
         match self.is_game_over() {
-            GameEndState::Win(_) => {
+            GameEndState::Win => {
                 log("game over with win".to_string(), depth);
                 return match mode {
                     MiniMaxMode::Max => MiniMaxReturnValue(depth + -10, None),
@@ -37,8 +107,6 @@ impl Game {
             GameEndState::Ongoing => (),
         }
         if depth > MAX_DEPTH {
-            println!("depth exceeded");
-
             return MiniMaxReturnValue(depth, None);
         }
 
@@ -78,100 +146,45 @@ impl Game {
         }
     }
 
-    pub fn bot_next_move(&self, next_valid_moves: Vec<usize>) -> usize {
-        let mut cloned_game = self.clone();
-        let result = cloned_game.minimax(next_valid_moves, MiniMaxMode::Max, 0);
-        // println!("{:?}", result);
+    fn bot_next_move(&mut self, next_valid_moves: Vec<usize>) -> usize {
+        let result = self.minimax(next_valid_moves, MiniMaxMode::Max, 0);
         result.1.unwrap_or(0)
-        // 0
     }
 
-    pub fn retrieve_next_move(&self) -> usize {
-        print_player_message(&self.next_to_move, "is playing...");
+    fn retrieve_next_move(&mut self, input_move: usize) -> Result<usize, JsValue> {
         let next_valid_moves = self.retrieve_valid_next_moves();
         match self.next_to_move {
-            Some(Agent::Player) => player_next_move(next_valid_moves),
-            Some(Agent::Bot) => self.bot_next_move(next_valid_moves),
-            None => panic!("null agent appeared in retrieve_next_move"),
+            Agent::Player => player_next_move(next_valid_moves, input_move),
+            Agent::Bot => Ok(self.bot_next_move(next_valid_moves)),
         }
     }
 
-    pub fn start_loop(&mut self) {
-        while self.next_to_move.is_some() {
-            let now = Instant::now();
-            let next_move = self.retrieve_next_move();
-            println!("Played in {} secs", now.elapsed().as_secs_f32());
-            self.play_move(next_move);
-            // let valid_next_moves = self.retrieve_valid_next_moves();
-            println!("{}\n", self);
-            // println!("Next valid moves: {:?}", valid_next_moves,);
-
-            match self.is_game_over() {
-                GameEndState::Win(winner) => {
-                    println!("{:?} wins!", winner);
-                    self.next_to_move = None
-                }
-                GameEndState::Tie => {
-                    println!("Game tied");
-                    self.next_to_move = None
-                }
-                GameEndState::Ongoing => self.flip_next_to_move(),
-            }
-        }
-    }
-
-    pub fn flip_next_to_move(&mut self) {
+    fn flip_next_to_move(&mut self) {
         match self.next_to_move {
-            Some(Agent::Bot) => self.next_to_move = Some(Agent::Player),
-            Some(Agent::Player) => self.next_to_move = Some(Agent::Bot),
-            None => panic!("Cannot flip a null player"),
+            Agent::Bot => self.next_to_move = Agent::Player,
+            Agent::Player => self.next_to_move = Agent::Bot,
         }
     }
 
     fn retrieve_symbol(&self) -> BoardState {
         match self.next_to_move {
-            Some(Agent::Bot) => self.bot_move.clone(),
-            Some(Agent::Player) => self.player_move.clone(),
-            None => panic!("this was never supposed to happen"),
+            Agent::Bot => BoardState::new(&self.bot_move),
+            Agent::Player => BoardState::new(&self.player_move),
         }
     }
 
-    pub fn play_move(&mut self, next_move: usize) {
+    fn play_move(&mut self, next_move: usize) {
         self.board[next_move] = self.retrieve_symbol();
     }
 
-    pub fn rewind(&mut self, played_move: usize) {
-        self.board[played_move] = BoardState::Empty(played_move);
+    fn rewind(&mut self, played_move: usize) {
+        self.board[played_move] = BoardState::Empty;
     }
 
-    pub fn is_game_over(&self) -> GameEndState {
-        let game_over_lines = vec![
-            GameOverLine(0, 1, 2),
-            GameOverLine(3, 4, 5),
-            GameOverLine(6, 7, 8),
-            GameOverLine(0, 3, 6),
-            GameOverLine(1, 4, 7),
-            GameOverLine(2, 5, 8),
-            GameOverLine(0, 4, 8),
-            GameOverLine(2, 4, 6),
-        ];
-        let board = &self.board;
-
-        for gol in game_over_lines {
-            if are_equal(&board[gol.0], &board[gol.1], &board[gol.2]) {
-                return GameEndState::Win(self.next_to_move.clone().unwrap().clone());
-            }
-        }
-        if self.retrieve_valid_next_moves().is_empty() {
-            return GameEndState::Tie;
-        }
-        GameEndState::Ongoing
-    }
-
-    pub fn retrieve_valid_next_moves(&self) -> Vec<usize> {
+    fn retrieve_valid_next_moves(&self) -> Vec<usize> {
         let mut valid_next_moves: Vec<usize> = Vec::new();
         for (index, item) in self.board.iter().enumerate() {
-            if let BoardState::Empty(_) = item {
+            if let BoardState::Empty = item {
                 valid_next_moves.push(index);
             }
         }
