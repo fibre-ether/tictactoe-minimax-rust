@@ -28,6 +28,7 @@ function App() {
 
       case GameEndState.Win:
         console.log(game.winner);
+        // @ts-expect-error winner is guaranteed to not be none
         setGameOver(`${Agent[game?.winner]} wins!`);
         setStartingMove(null);
         break;
